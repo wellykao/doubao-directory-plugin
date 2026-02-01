@@ -26,7 +26,11 @@ function initPlugin() {
   isPluginActive = true;
   createDirectoryPanel();
   startObserving();
-  generateInitialDirectory();
+  
+  // 延迟生成初始目录，确保页面完全加载
+  setTimeout(() => {
+    generateInitialDirectory();
+  }, 1000);
 }
 
 // 创建目录面板
@@ -161,10 +165,11 @@ function startObserving() {
     });
     
     if (hasNewContent) {
+      console.log('检测到新内容，准备更新目录');
       // 延迟处理，确保DOM已完全加载
       setTimeout(() => {
         updateDirectory();
-      }, 500);
+      }, 300);
     }
   });
   
@@ -177,6 +182,8 @@ function startObserving() {
 
 // 生成初始目录
 function generateInitialDirectory() {
+  console.log('开始生成初始目录...');
+  
   const chatMessages = getChatMessages();
   console.log('找到对话消息:', chatMessages.length);
   
@@ -203,11 +210,96 @@ function generateInitialDirectory() {
     if (container) {
       const emptyMessage = document.createElement('div');
       emptyMessage.className = 'directory-empty';
-      emptyMessage.innerHTML = '<span>暂无用户消息</span>';
+      emptyMessage.innerHTML = '<span>暂无用户消息，请开始对话...</span>';
       container.appendChild(emptyMessage);
     }
     console.log('未找到用户消息');
   }
+  
+  console.log('初始目录生成完成，共', uniqueUserMessages.length, '条');
+}
+
+// 判断是否为无关UI元素（按钮、标签等）
+function isUIElement(text, element) {
+  // 常见UI元素关键词
+  const uiKeywords = [
+    '分享', '复制', '点赞', '收藏', '举报', '删除', '编辑', '回复',
+    '发送', '提交', '取消', '确定', '保存', '下载', '上传',
+    'share', 'copy', 'like', 'favorite', 'report', 'delete', 'edit', 'reply',
+    'send', 'submit', 'cancel', 'confirm', 'save', 'download', 'upload',
+    '更多', '更多选项', 'more', 'options',
+    '展开', '收起', 'expand', 'collapse',
+    '查看', 'view', '查看详情',
+    '点击', 'click', 'tap'
+  ];
+  
+  // 检查是否包含UI关键词
+  const hasUIKeyword = uiKeywords.some(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
+  
+  // 检查是否是按钮元素
+  const isButton = element.tagName === 'BUTTON' || 
+                   element.classList.contains('button') ||
+                   element.classList.contains('btn') ||
+                   element.getAttribute('role') === 'button';
+  
+  // 检查是否是链接
+  const isLink = element.tagName === 'A' || 
+                 element.classList.contains('link');
+  
+  // 检查是否是标签或徽章
+  const isBadge = element.classList.contains('badge') ||
+                  element.classList.contains('tag') ||
+                  element.classList.contains('label');
+  
+  // 检查是否是图标容器
+  const isIcon = element.classList.contains('icon') ||
+                 element.classList.contains('svg') ||
+                 element.querySelector('svg') !== null;
+  
+  // 检查是否是工具栏或操作栏
+  const isToolbar = element.classList.contains('toolbar') ||
+                    element.classList.contains('actions') ||
+                    element.classList.contains('controls');
+  
+  // 综合判断
+  return hasUIKeyword || isButton || isLink || isBadge || isIcon || isToolbar;
+}
+
+// 获取用户消息的纯文本内容（排除UI元素）
+function getUserMessageText(element) {
+  // 克隆元素以避免修改原始DOM
+  const clone = element.cloneNode(true);
+  
+  // 移除常见的UI元素
+  const uiSelectors = [
+    'button', '.button', '.btn',
+    'a', '.link',
+    '.badge', '.tag', '.label',
+    '.icon', '.svg', 'svg',
+    '.toolbar', '.actions', '.controls',
+    '.share', '.copy', '.like', '.favorite',
+    '.report', '.delete', '.edit', '.reply',
+    '.more', '.options'
+  ];
+  
+  uiSelectors.forEach(selector => {
+    const elements = clone.querySelectorAll(selector);
+    elements.forEach(el => el.remove());
+  });
+  
+  // 获取纯文本
+  let text = clone.textContent.trim();
+  
+  // 移除常见的UI关键词
+  const uiKeywords = ['分享', '复制', '点赞', '收藏', '举报', '删除', '编辑', '回复', '更多'];
+  uiKeywords.forEach(keyword => {
+    text = text.replace(new RegExp(keyword, 'g'), '');
+  });
+  
+  // 清理多余的空格和换行
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
 }
 
 // 获取所有对话消息
@@ -220,7 +312,7 @@ function getChatMessages() {
   console.log('遍历所有div元素:', allElements.length);
   
   allElements.forEach((element) => {
-    const text = element.textContent.trim();
+    const text = getUserMessageText(element);
     
     // 跳过已被捕获的元素的子元素
     let isChildOfCaptured = false;
@@ -240,7 +332,13 @@ function getChatMessages() {
       return;
     }
     
-    if (text && text.length > 10) {
+    // 过滤掉UI元素
+    if (isUIElement(text, element)) {
+      return;
+    }
+    
+    // 放宽文本长度要求，至少2个字符
+    if (text && text.length > 2) {
       // 检测是否为用户消息（豆包特定的识别逻辑）
       const isUserMessage = 
         // 基于类名的识别
@@ -274,7 +372,13 @@ function getChatMessages() {
         element.style.justifyContent === 'flex-end' ||
         // 基于位置的识别（右侧对齐的通常是用户消息）
         getComputedStyle(element).alignSelf === 'flex-end' ||
-        getComputedStyle(element).justifyContent === 'flex-end';
+        getComputedStyle(element).justifyContent === 'flex-end' ||
+        // 新增：基于父元素的识别
+        (element.parentElement && (
+          element.parentElement.classList.contains('user') ||
+          element.parentElement.classList.contains('human') ||
+          element.parentElement.getAttribute('data-role') === 'user'
+        ));
       
       if (isUserMessage) {
         messages.push({
@@ -284,10 +388,12 @@ function getChatMessages() {
           isUser: true
         });
         capturedElements.add(element);
+        console.log('识别到用户消息:', text.substring(0, 50));
       }
     }
   });
   
+  console.log('总共识别到', messages.length, '条用户消息');
   return messages;
 }
 
@@ -639,9 +745,16 @@ setInterval(() => {
 // 定期更新目录，确保捕获新消息
 setInterval(() => {
   if (isPluginActive) {
-    updateDirectory();
+    const container = document.getElementById('directory-items-container');
+    // 检查目录是否为空，如果为空则重新生成
+    if (container && container.children.length === 0) {
+      console.log('目录为空，重新生成...');
+      generateInitialDirectory();
+    } else {
+      updateDirectory();
+    }
   }
-}, 2000);
+}, 3000);
 
 // 最小化目录
 function minimizeDirectory() {
