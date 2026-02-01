@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "豆包对话目录导航",
+  "version": "1.0.0",
+  "description": "为豆包对话提供实时目录导航，实现长对话内容高效定位",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.doubao.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}
